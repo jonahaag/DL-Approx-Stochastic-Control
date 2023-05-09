@@ -1,160 +1,64 @@
 import numpy as np
 import tensorflow as tf
 import matplotlib.pyplot as plt
+from utils import StorePred
+from time import perf_counter
 
-def update(s, i, d):
-    s_new = s + i - d
-    return s_new
+histories = np.zeros((5,1000,3))
 
-def buy_cost(i,t):
-    return t*i
+for i, T in enumerate([10, 15, 20]):
+    for seed in range(5):
+        tf.random.set_seed(seed)
 
-def relu(x):
-    return tf.nn.relu(x)
+        # T = 10 # number of subnetworks
 
-def penalty(x):
-    return tf.where(tf.less(x, 0.), gamma * tf.square(x), 0.)
+        s_0 = 50. # initial value of s_0
+        gamma = 1e4 # penalty parameter
+        smax = 100. # maximum value of s_t
+        imax = 30. # maximum value of i_t
+        learning_rate = 0.003 # learning rate for SGD
+        num_epochs = 1000
+        batch_size = 50
+        n_it_steps = 20000
+        N = int(batch_size * n_it_steps / num_epochs) # training set size
 
-class Subnetwork(tf.keras.Model):
-    def __init__(self, batch_size):
-        super(Subnetwork, self).__init__()
-        self.dense1 = tf.keras.layers.Dense(100, activation=None, kernel_initializer='random_normal') # , input_shape=(batch_size,)
-        self.bn1 = tf.keras.layers.BatchNormalization()
-        self.dense2 = tf.keras.layers.Dense(100, activation=None, kernel_initializer='random_normal')
-        self.bn2 = tf.keras.layers.BatchNormalization()
-        self.dense_out = tf.keras.layers.Dense(1, activation=None, kernel_initializer='random_normal')
+        # Initial state and labels
+        inputs = tf.constant(s_0 * np.ones((N,1)), dtype=tf.float32)
+        outputs = tf.constant(np.zeros_like(inputs))
 
-    def call(self, inputs, training=False):
-        x = self.dense1(inputs)
-        x = self.bn1(x, training=training)
-        x = relu(x)
-        x = self.dense2(x)
-        x = self.bn2(x, training=training)
-        x = relu(x)
-        outputs = self.dense_out(x)
-        return outputs
+        # Demand
+        d_array = tf.random.uniform(shape=(N,T), minval=5, maxval=35, dtype=tf.float32)
+        d_array = tf.floor(d_array)
 
-class MyModel(tf.keras.Model):
-    def __init__(self, T, K, mu, sigma, batch_size):
-        super(MyModel, self).__init__()
-        self.subnetworks = [Subnetwork(batch_size) for _ in range(T)]
-        self.T = T
-        self.K = K
-        self.mu = mu
-        self.sigma = sigma
+        # Instantiate model
+        model = StorePred(T, smax, imax, gamma, d_array, batch_size, hidden_units=50)
 
-    def call(self, input, training=False):
-        s = input[:,0]
-        d_batch = input[:,1:]
-        s = tf.reshape(s,(-1,1))
-        i_prev = self.subnetworks[0](s, training=training)
-        cost = tf.zeros(s.shape)
+        # Define loss function and optimizer
+        optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
+        loss_function = tf.keras.losses.MeanAbsoluteError()
+        metric = [tf.keras.metrics.MeanAbsoluteError()]
 
-        for t in range(1, self.T):
-            d = d_batch[:,t]
-            # d = tf.random.normal(s.shape, mean=self.mu, stddev=self.sigma)
-            s = update(s, i_prev, d)
-            i = self.subnetworks[t](s, training=training)
-            cost += buy_cost(i,t)
-            cost += penalty(s)
-            cost += penalty(smax - s) 
-            cost += penalty(i)
-            cost += penalty(imax - i) 
-            cost += penalty(s + i - d)
-            i_prev = i
+        model.compile(optimizer=optimizer, loss=loss_function, metrics=metric)
 
-        return cost
-    
-    def simulate_one_example(self, input):
-        s = input[:,0]
-        d_batch = input[:,1:]
-        s = tf.reshape(tf.constant(s),(-1,1))
-        i_prev = self.subnetworks[0](s, training=False)
-        
-        s_history = np.zeros((s.shape[0],T))
-        i_history = np.zeros((s.shape[0],T))
-        cost_history = np.zeros((s.shape[0],T))
+        # Train the model
+        start = perf_counter()
+        history = model.fit(x=inputs, y=outputs, batch_size=batch_size, epochs=num_epochs)
+        print(f'Seed = {seed}, T = {T}, time = {perf_counter() - start}')
+        histories[seed, :, i] = np.reshape(history.history['mean_absolute_error'],(1,1000))
 
-        s_history[:,0] = s.numpy().reshape(-1,)
-        i_history[:,0] = i_prev.numpy().reshape(-1,)
-        cost_history[:,0] = 0.
+        model.example_trajectory(s_0, seed)
 
-        cost = tf.zeros(s.shape)
-
-        for t in range(1, self.T):
-            d = tf.reshape(d_batch[:,t],(-1,1))
-            # d = tf.random.normal(s.shape, mean=self.mu, stddev=self.sigma)
-            s = update(s, i_prev, d)
-            i = self.subnetworks[t](tf.reshape(s,(1,-1)), training=False)
-            cost += buy_cost(i,t)
-            cost += penalty(s)
-            cost += penalty(smax - s) 
-            cost += penalty(i)
-            cost += penalty(imax - i) 
-            cost += penalty(s + i - d)
-            i_prev = i
-            s_history[:,t] = s.numpy().reshape(-1,)
-            i_history[:,t] = i_prev.numpy().reshape(-1,)
-            cost_history[:,t] = cost.numpy().reshape(-1,)
-        return s_history, i_history, cost_history
-
-    # @tf.function
-    # def train_step(self, s_0):
-    #     with tf.GradientTape() as tape:
-    #         cost = self.call(s_0, training=True)
-    #     gradients = tape.gradient(cost, model.trainable_variables)
-    #     optimizer.apply_gradients(zip(gradients, model.trainable_variables))
-    #     return cost
-
-tf.random.set_seed(42)
-
-T = 10 # number of subnetworks
-mu = 5.0 # mean of d_t
-sigma = 1.0 # standard deviation of d_t
-s_0 = 50. # initial value of s_0
-K = 1.0 # constant in the cost function
-gamma = 1000. # penalty parameter
-smax = 100. # maximum value of s_t
-imax = 10. # maximum value of i_t
-learning_rate = 0.001 # learning rate for SGD
-num_epochs = 1000
-batch_size = 10
-n_it_steps = 15000
-N = int(batch_size * n_it_steps / num_epochs) # training set size
-
-inputs = tf.constant(s_0 * np.ones((N,1)), dtype=tf.dtypes.float32)
-outputs = tf.constant(np.zeros_like(inputs))
-d_array = tf.random.normal([N,T], mean=mu, stddev=sigma)
-inputs = tf.concat([inputs,d_array],1)
-
-model = MyModel(T, K, mu, sigma, batch_size)
-
-optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
-loss_function = tf.keras.losses.MeanSquaredError()
-metric = [tf.keras.metrics.MeanSquaredError()]
-
-model.compile(optimizer=optimizer, loss=loss_function, metrics=metric)
-
-history = model.fit(x=inputs,
-                y=outputs,
-                batch_size=batch_size, 
-                epochs=num_epochs)
-
-s_history, i_history, cost_history = model.simulate_one_example(inputs[:10,:])
-plt.figure()
-plt.plot(range(T),s_history[0,:])
-plt.figure()
-plt.plot(range(T),i_history[0,:])
-plt.figure()
-plt.plot(range(T),inputs[0,1:])
-plt.figure()
-plt.plot(range(T),cost_history[0,:])
-plt.show()
-
-plt.figure('Error', figsize=(15, 10))
-plt.semilogy(history.history['mean_squared_error'], label='MSE')
+# Plot training history
+fig, ax = plt.subplots()
+plt.figure('Loss', figsize=(15, 10))
+plt.semilogy(histories[:,:,0].mean(axis=0), label='T=10')
+plt.fill_between(np.arange(num_epochs), histories[:,:,0].mean(axis=0)-histories[:,:,0].std(axis=0), histories[:,:,0].mean(axis=0)+histories[:,:,0].std(axis=0), alpha=0.3)
+plt.semilogy(histories[:,:,1].mean(axis=0), label='T=15')
+plt.fill_between(np.arange(num_epochs), histories[:,:,1].mean(axis=0)-histories[:,:,1].std(axis=0), histories[:,:,1].mean(axis=0)+histories[:,:,1].std(axis=0), alpha=0.3)
+plt.semilogy(histories[:,:,2].mean(axis=0), label='T=20')
+plt.fill_between(np.arange(num_epochs), histories[:,:,2].mean(axis=0)-histories[:,:,2].std(axis=0), histories[:,:,2].mean(axis=0)+histories[:,:,2].std(axis=0), alpha=0.3)
 plt.xlabel('Epoch')
-plt.ylabel('Mean squared error')
+plt.ylabel('Mean absolute error')
 plt.legend()
 plt.grid(True)
-plt.show()
+plt.savefig('results/loss_five_seeds_three_times.png', dpi=300)
