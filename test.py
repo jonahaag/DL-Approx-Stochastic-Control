@@ -61,6 +61,7 @@ class MyModel(tf.keras.Model):
             cost += penalty(i)
             cost += penalty(imax - i) 
             cost += penalty(s + i - d)
+            print(cost)
             i_prev = i
 
         return cost
@@ -68,7 +69,7 @@ class MyModel(tf.keras.Model):
     def simulate_one_example(self, input):
         s = input[:,0]
         d_batch = input[:,1:]
-        s = tf.reshape(tf.constant(s),(-1,1))
+        s = tf.reshape(s,(-1,1))
         i_prev = self.subnetworks[0](s, training=False)
         
         s_history = np.zeros((s.shape[0],T))
@@ -82,10 +83,11 @@ class MyModel(tf.keras.Model):
         cost = tf.zeros(s.shape)
 
         for t in range(1, self.T):
-            d = tf.reshape(d_batch[:,t],(-1,1))
+            d = d_batch[:,t]
             # d = tf.random.normal(s.shape, mean=self.mu, stddev=self.sigma)
             s = update(s, i_prev, d)
-            i = self.subnetworks[t](tf.reshape(s,(1,-1)), training=False)
+            print("s: ", s.shape)
+            i = self.subnetworks[t](s, training=False)
             cost += buy_cost(i,t)
             cost += penalty(s)
             cost += penalty(smax - s) 
@@ -140,21 +142,19 @@ history = model.fit(x=inputs,
                 batch_size=batch_size, 
                 epochs=num_epochs)
 
-s_history, i_history, cost_history = model.simulate_one_example(inputs[:10,:])
-plt.figure()
-plt.plot(range(T),s_history[0,:])
-plt.figure()
-plt.plot(range(T),i_history[0,:])
-plt.figure()
-plt.plot(range(T),inputs[0,1:])
-plt.figure()
-plt.plot(range(T),cost_history[0,:])
-plt.show()
+model.save('saved_model/my_model')
 
-plt.figure('Error', figsize=(15, 10))
-plt.semilogy(history.history['mean_squared_error'], label='MSE')
-plt.xlabel('Epoch')
-plt.ylabel('Mean squared error')
-plt.legend()
-plt.grid(True)
-plt.show()
+# s_history, i_history, cost_history = model.simulate_one_example(inputs[:10,:])
+# plt.plot(range(T),s_history[0,:])
+# plt.plot(range(T),i_history[0,:])
+# plt.plot(range(T),inputs[0,1:])
+# plt.plot(range(T),cost_history[0,:])
+# plt.show()
+
+# cost_history = []
+# for epoch in range(num_epochs):
+#     cost = model.train_step(s_0, mu, sigma)
+#     cost_history.append(cost)
+#     print(f'Epoch {epoch + 1} cost: {cost:.4f}')
+
+
