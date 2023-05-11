@@ -16,6 +16,7 @@ def relu(x):
     return tf.nn.relu(x)
 
 def penalty(x, gamma):
+    # Returns gamma * |x| if x < 0, else 0
     return tf.where(tf.less(x, 0.), gamma * tf.abs(x), 0.)
 
 class StorePred(tf.keras.Model):
@@ -29,6 +30,7 @@ class StorePred(tf.keras.Model):
         self.batch_size = batch_size
         self.call_id = 0
 
+        # Construct the stacked network with T subnetworks
         self.network_layers=[]
         for _ in range(T):
             self.network_layers.append(tf.keras.layers.Dense(hidden_units, activation=None, kernel_initializer='random_normal'))
@@ -58,21 +60,22 @@ class StorePred(tf.keras.Model):
         return cost
     
     def example_trajectory(self, s_0, seed):
-        # tf.random.set_seed(seed)
-        # Initial state and labels
+        # tf.random.set_seed(seed+2)
+        # Set starting point
         s = tf.constant(s_0 * np.ones((1,1)), dtype=tf.float32)
 
         # Demand
         d_array = tf.random.uniform(shape=(1,self.T), minval=5, maxval=35, dtype=tf.float32)
         d_array = tf.floor(d_array)
 
-        # Predict
+        # Empty array for history
         costs = np.zeros(self.T+1)
         store = np.zeros(self.T+1)
         demand = np.zeros(self.T)
         buy = np.zeros(self.T)
 
         cost = tf.zeros(s.shape)
+        # Sweep through the network once and store the intermediate results after each subnetwork
         for t in range(self.T):
             s = tf.reshape(s,(-1,1))
             x = self.network_layers[t*5](s) # input to hidden layer
@@ -95,22 +98,23 @@ class StorePred(tf.keras.Model):
         cost += penalty(s, self.gamma) + penalty(self.smax - s, self.gamma)
         costs[self.T] = cost
             
+        fig, ax = plt.subplots()
+        ax.plot(costs, label='Cost')
+        ax.set_xlabel('Time')
+        ax.set_ylabel('Cost')
+        ax.set_title(f'Cost over time, T={self.T}')
+        ax.grid(True)
+        fig.savefig(f'results/cost_{seed}_{self.T}.png', dpi=300)
+        plt.show()
 
-        plt.figure('Cost')
-        plt.plot(costs, label='Cost')
-        plt.xlabel('Time')
-        plt.ylabel('Cost')
-        plt.title(f'Cost over time, T={self.T}')
-        plt.grid(True)
-        plt.savefig(f'results/cost_{seed}_{self.T}.png', dpi=300)
-
-        plt.figure('Store')
-        plt.plot(range(self.T+1),store, label='Store')
-        plt.plot(range(1,self.T+1),demand, label='Demand')
-        plt.plot(buy, label='Buy')
-        plt.xlabel('Time')
-        plt.ylabel('Store')
-        plt.legend()
-        plt.title(f'State, action and demand over time, T={self.T}')
-        plt.grid(True)
-        plt.savefig(f'results/storage_{seed}_{self.T}.png', dpi=300)
+        fig, ax = plt.subplots()
+        ax.plot(range(self.T+1),store, label='Store')
+        ax.plot(range(1,self.T+1),demand, label='Demand')
+        ax.plot(buy, label='Buy')
+        ax.set_xlabel('Time')
+        ax.set_ylabel('Store')
+        ax.legend()
+        ax.set_title(f'State, action and demand over time, T={self.T}')
+        ax.grid(True)
+        # fig.savefig(f'results/storage_{seed}_{self.T}.png', dpi=300)
+        plt.show()

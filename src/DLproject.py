@@ -7,13 +7,13 @@ from time import perf_counter
 seed=1234
 tf.random.set_seed(seed)
 
-T = 15 # number of subnetworks
-
-s_0 = 50. # initial value of s_0
+# Parameters
+T = 15 # end time/number of subnetworks
+s_0 = 50.
 gamma = 1e4 # penalty parameter
-smax = 100. # maximum value of s_t
-imax = 30. # maximum value of i_t
-learning_rate = 0.003 # learning rate for SGD
+smax = 100.
+imax = 30.
+learning_rate = 0.003
 num_epochs = 1000
 batch_size = 50
 n_it_steps = 20000
@@ -40,7 +40,7 @@ model.compile(optimizer=optimizer, loss=loss_function, metrics=metric)
 # Train the model
 start = perf_counter()
 history = model.fit(x=inputs, y=outputs, batch_size=batch_size, epochs=num_epochs)
-print(f'Seed = {seed}, T = {T}, time = {perf_counter() - start}')
+print(f'Computation time = {perf_counter() - start}')
 
 model.example_trajectory(s_0, seed)
 
