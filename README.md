@@ -1,6 +1,6 @@
 # DL-Approx-Stochastic-Control
 
-This repository contains the project work for the course "Computational Methods for Stochastic Differential Equations and Machine Learning" at the Royal Institute of Technology (KTH) in the spring term 2023, a joint work with Wille Viman.
+This repository contains the project work for the course "Computational Methods for Stochastic Differential Equations and Machine Learning" at the Royal Institute of Technology (KTH) in the spring term 2023, a joint work with Wille Viman Vestberg.
 The purpose of the project was to create a poster based on the paper ["Deep Learning Approximation for Stochastic Control Problems"](https://arxiv.org/pdf/1611.07422.pdf) by Han et al.
 
 The paper proposes a method to approximate optimal controllers for stochastic control setups using stacked deep neural networks.
